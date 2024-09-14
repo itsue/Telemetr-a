@@ -1,8 +1,7 @@
 package org.example.telemetrysystem;
 
 import javafx.fxml.FXML;
-import javafx.scene.chart.LineChart;
-import javafx.scene.chart.XYChart;
+import javafx.scene.chart.PieChart;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import org.snmp4j.CommunityTarget;
@@ -21,11 +20,11 @@ import org.snmp4j.transport.DefaultUdpTransportMapping;
 public class MonitorController {
 
     @FXML
-    private LineChart<Number, Number> cpuChart;
+    private PieChart cpuChart;
     @FXML
-    private LineChart<Number, Number> ramChart;
+    private PieChart ramChart;
     @FXML
-    private LineChart<Number, Number> storageChart;
+    private PieChart storageChart;
     @FXML
     private Label cpuLabel;
     @FXML
@@ -39,44 +38,78 @@ public class MonitorController {
     @FXML
     private Button refreshStorageButton;
 
-    // Configuración de SNMP
+    @FXML
+    private Label nicIdLabel;
+    @FXML
+    private Label speedLabel;
+    @FXML
+    private Label macAddressLabel;
+    @FXML
+    private Label nameLabel;
+    @FXML
+    private Label serverNameLabel;
+    @FXML
+    private Label locationLabel;
+
+    @FXML
+    private void handleRefreshCPU() {
+        updateCPUChart();
+    }
+
+    @FXML
+    private void handleRefreshRAM() {
+        updateRAMChart();
+    }
+
+    @FXML
+    private void handleRefreshStorage() {
+        updateStorageChart();
+    }
+
     private static final String COMMUNITY = "ingsoft";
     private static final String IP_ADDRESS = "192.168.1.71"; // Cambia según tu servidor
     private static final int PORT = 161;
     private static final int TIMEOUT = 2000;
     private static final int RETRIES = 3;
 
-    // OIDs para CPU, Memoria y Almacenamiento
     private static final String CPU_OID = "1.3.6.1.4.1.2021.11.10.0";
     private static final String MEM_TOTAL_OID = "1.3.6.1.4.1.2021.4.11.0";
-    private static final String MEM_USED_OID = " 1.3.6.1.4.1.2021.4.6.0";
-    private static final String MEM_AVAILABLE_OID = "1.3.6.1.4.1.2021.4.5.0 ";
+    private static final String MEM_USED_OID = "1.3.6.1.4.1.2021.4.6.0";
+    private static final String MEM_AVAILABLE_OID = "1.3.6.1.4.1.2021.4.5.0";
     private static final String STORAGE_TOTAL_OID = "1.3.6.1.4.1.2021.9.1.6.1";
     private static final String STORAGE_USED_OID = "1.3.6.1.4.1.2021.9.1.8.1";
     private static final String STORAGE_AVAILABLE_OID = "1.3.6.1.4.1.2021.9.1.7.1";
+
+    private static final String NIC_ID_OID = "1.3.6.1.2.1.2.2.1.2.2";
+    private static final String SPEED_OID = "1.3.6.1.2.1.2.2.1.5.2";
+    private static final String MAC_ADDRESS_OID = "1.3.6.1.2.1.2.2.1.6.2";
+    private static final String NAME_OID = "1.3.6.1.2.1.1.4.0";
+    private static final String SERVER_NAME_OID = "1.3.6.1.2.1.1.5.0";
+    private static final String LOCATION_OID = "1.3.6.1.2.1.1.6.0";
 
     private Snmp snmpClient;
     private CommunityTarget target;
 
     public void initialize() {
-        // Inicializa el cliente SNMP y el objetivo
         setupSNMPClient();
 
-        // Eventos de los botones de refresco
         refreshCPUButton.setOnAction(event -> updateCPUChart());
         refreshRAMButton.setOnAction(event -> updateRAMChart());
         refreshStorageButton.setOnAction(event -> updateStorageChart());
+
+        handleRefreshCPU();
+        handleRefreshRAM();
+        handleRefreshStorage();
+
+        updateGeneralInfo();
     }
 
-    // Configuración del cliente SNMP
     private void setupSNMPClient() {
         try {
-            // Configuración de la dirección de destino
             Address targetAddress = new UdpAddress(IP_ADDRESS + "/" + PORT);
             TransportMapping<UdpAddress> transport = new DefaultUdpTransportMapping();
             transport.listen();
 
-            // Configuración del objetivo SNMP
             target = new CommunityTarget();
             target.setCommunity(new OctetString(COMMUNITY));
             target.setAddress(targetAddress);
@@ -84,25 +117,20 @@ public class MonitorController {
             target.setRetries(RETRIES);
             target.setTimeout(TIMEOUT);
 
-            // Crear objeto SNMP
             snmpClient = new Snmp(transport);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    // Método para realizar la consulta SNMP
     private String getSNMPValue(String oid) {
         try {
-            // Crear PDU (Protocol Data Unit)
             PDU pdu = new PDU();
             pdu.add(new VariableBinding(new OID(oid)));
             pdu.setType(PDU.GET);
 
-            // Enviar la solicitud SNMP
             ResponseEvent response = snmpClient.send(pdu, target);
 
-            // Procesar la respuesta
             if (response != null && response.getResponse() != null) {
                 return response.getResponse().get(0).getVariable().toString();
             } else {
@@ -114,65 +142,40 @@ public class MonitorController {
         return null;
     }
 
-    // Convertir KB a MB
     private double convertKBToMB(double kb) {
         return kb / 1024.0;
     }
 
-    // Actualizar gráfico de CPU
     private void updateCPUChart() {
         String cpuUsage = getSNMPValue(CPU_OID);
         if (cpuUsage != null) {
-            cpuLabel.setText("CPU Usage: " + cpuUsage + "%");
+            double usage = Double.parseDouble(cpuUsage);
+            double free = 100 - usage;
 
-            double cpuValue = Double.parseDouble(cpuUsage);
-            XYChart.Series<Number, Number> series = new XYChart.Series<>();
-            series.setName("CPU en uso");
-            series.getData().add(new XYChart.Data<>(1, cpuValue)); // Usar un valor fijo en el eje X
-            cpuChart.getData().clear();
-            cpuChart.getData().add(series);
+            PieChart.Data used = new PieChart.Data(String.format("Uso: %.1f%%", usage), usage);
+            PieChart.Data freeData = new PieChart.Data(String.format("Libre: %.1f%%", free), free);
 
-            // Configuración para ocultar la marca de tiempo en el eje X
-            cpuChart.getXAxis().setLabel("");
-            cpuChart.getXAxis().setTickLabelsVisible(false);
+            cpuChart.setData(javafx.collections.FXCollections.observableArrayList(used, freeData));
         }
     }
 
-    // Actualizar gráfico de RAM (Total, Usado, Disponible)
     private void updateRAMChart() {
-        String ramTotal = getSNMPValue(MEM_TOTAL_OID);
-        String ramUsed = getSNMPValue(MEM_USED_OID);
-        String ramAvailable = getSNMPValue(MEM_AVAILABLE_OID);
+        String memTotal = getSNMPValue(MEM_TOTAL_OID);
+        String memUsed = getSNMPValue(MEM_USED_OID);
+        String memAvailable = getSNMPValue(MEM_AVAILABLE_OID);
 
-        if (ramTotal != null && ramUsed != null && ramAvailable != null) {
-            double totalMB = convertKBToMB(Double.parseDouble(ramTotal));
-            double usedMB = convertKBToMB(Double.parseDouble(ramUsed));
-            double availableMB = convertKBToMB(Double.parseDouble(ramAvailable));
+        if (memTotal != null && memUsed != null && memAvailable != null) {
+            double totalMB = convertKBToMB(Double.parseDouble(memTotal));
+            double usedMB = convertKBToMB(Double.parseDouble(memUsed));
+            double availableMB = convertKBToMB(Double.parseDouble(memAvailable));
 
-            ramLabel.setText("Total: " + String.format("%.2f", totalMB) + " MB, Usado: " + String.format("%.2f", usedMB) + " MB, Disponible: " + String.format("%.2f", availableMB) + " MB");
+            PieChart.Data used = new PieChart.Data(String.format("Usado: %.1f MB", usedMB), usedMB);
+            PieChart.Data available = new PieChart.Data(String.format("Disponible: %.1f MB", availableMB), availableMB);
 
-            XYChart.Series<Number, Number> totalSeries = new XYChart.Series<>();
-            totalSeries.setName("Total");
-            totalSeries.getData().add(new XYChart.Data<>(1, totalMB)); // Usar un valor fijo en el eje X
-
-            XYChart.Series<Number, Number> usedSeries = new XYChart.Series<>();
-            usedSeries.setName("Usado");
-            usedSeries.getData().add(new XYChart.Data<>(1, usedMB)); // Usar un valor fijo en el eje X
-
-            XYChart.Series<Number, Number> availableSeries = new XYChart.Series<>();
-            availableSeries.setName("Disponible");
-            availableSeries.getData().add(new XYChart.Data<>(1, availableMB)); // Usar un valor fijo en el eje X
-
-            ramChart.getData().clear();
-            ramChart.getData().addAll(totalSeries, usedSeries, availableSeries);
-
-            // Configuración para ocultar la marca de tiempo en el eje X
-            ramChart.getXAxis().setLabel("");
-            ramChart.getXAxis().setTickLabelsVisible(false);
+            ramChart.setData(javafx.collections.FXCollections.observableArrayList(used, available));
         }
     }
 
-    // Actualizar gráfico de Almacenamiento (Total, Usado, Disponible)
     private void updateStorageChart() {
         String storageTotal = getSNMPValue(STORAGE_TOTAL_OID);
         String storageUsed = getSNMPValue(STORAGE_USED_OID);
@@ -183,26 +186,26 @@ public class MonitorController {
             double usedMB = convertKBToMB(Double.parseDouble(storageUsed));
             double availableMB = convertKBToMB(Double.parseDouble(storageAvailable));
 
-            storageLabel.setText("Total: " + String.format("%.2f", totalMB) + " MB, Usado: " + String.format("%.2f", usedMB) + " MB, Disponible: " + String.format("%.2f", availableMB) + " MB");
+            PieChart.Data used = new PieChart.Data(String.format("Usado: %.1f MB", usedMB), usedMB);
+            PieChart.Data available = new PieChart.Data(String.format("Disponible: %.1f MB", availableMB), availableMB);
 
-            XYChart.Series<Number, Number> totalSeries = new XYChart.Series<>();
-            totalSeries.setName("Total");
-            totalSeries.getData().add(new XYChart.Data<>(1, totalMB)); // Usar un valor fijo en el eje X
-
-            XYChart.Series<Number, Number> usedSeries = new XYChart.Series<>();
-            usedSeries.setName("Usado");
-            usedSeries.getData().add(new XYChart.Data<>(1, usedMB)); // Usar un valor fijo en el eje X
-
-            XYChart.Series<Number, Number> availableSeries = new XYChart.Series<>();
-            availableSeries.setName("Disponible");
-            availableSeries.getData().add(new XYChart.Data<>(1, availableMB)); // Usar un valor fijo en el eje X
-
-            storageChart.getData().clear();
-            storageChart.getData().addAll(totalSeries, usedSeries, availableSeries);
-
-            // Configuración para ocultar la marca de tiempo en el eje X
-            storageChart.getXAxis().setLabel("");
-            storageChart.getXAxis().setTickLabelsVisible(false);
+            storageChart.setData(javafx.collections.FXCollections.observableArrayList(used, available));
         }
+    }
+
+    private void updateGeneralInfo() {
+        String nicId = getSNMPValue(NIC_ID_OID);
+        String speed = getSNMPValue(SPEED_OID);
+        String macAddress = getSNMPValue(MAC_ADDRESS_OID);
+        String name = getSNMPValue(NAME_OID);
+        String serverName = getSNMPValue(SERVER_NAME_OID);
+        String location = getSNMPValue(LOCATION_OID);
+
+        nicIdLabel.setText(nicId != null ? String.format("ID de NIC: %s", nicId) : "ID de NIC: No disponible");
+        speedLabel.setText(speed != null ? String.format("Velocidad: %s", speed) : "Velocidad: No disponible");
+        macAddressLabel.setText(macAddress != null ? String.format("Dirección MAC: %s", macAddress) : "Dirección MAC: No disponible");
+        nameLabel.setText(name != null ? String.format("Nombre: %s", name) : "Nombre: No disponible");
+        serverNameLabel.setText(serverName != null ? String.format("Nombre del servidor: %s", serverName) : "Nombre del servidor: No disponible");
+        locationLabel.setText(location != null ? String.format("Ubicación: %s", location) : "Ubicación: No disponible");
     }
 }
